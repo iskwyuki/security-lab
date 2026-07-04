@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "iskwyuki-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "iskwyuki/iskwyuki-claude-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "iskwyuki-claude-plugins@iskwyuki-claude-plugins": true,
+    "claude-code-harness@iskwyuki-claude-plugins": true
+  }
+}
