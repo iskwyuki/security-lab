@@ -1,0 +1,67 @@
+# .wt-parallel.yaml — worktree 並列開発マニフェスト（リポジトリ直下・すべて任意）
+#
+# パーサは yq に依存せず、bash（awk）で読む strict-subset のみを受理する（設計書 §5.1）。
+# 範囲外の構文（anchor/alias・block scalar `|`/`>`・多文書 `---`・flow map `{}`・
+# inline list の入れ子・タブインデント・3 階層以上のネスト）は明示エラーで拒否される。
+# インデントはスペース 2。
+# ※ 範囲外構文の拒否（バリデーション）は wt-up が起動前に実施する（リリース 2・6.3 で有効）。
+#   クォート値の中身（"uv sync && pnpm install" 等）は逐語スカラとして誤検知しない。
+#
+# マニフェストが無い場合、wt-new は「作成＋設定引き継ぎ＋plugin 登録」のみ行い、
+# 起動系（wt-up）は opt-in（宣言が無ければ案内して正常終了）。
+# ── 凡例: [S1]=リリース1で有効 / [S2]=リリース2（起動）で有効 ──
+
+# ── ブランチ起点（省略時: env BASE_REF > origin/HEAD > 現在ブランチ）[S1] ──
+base_ref: origin/main
+
+# ── 追加の引き継ぎファイル（.env と .claude/settings.local.json は既定で自動）[S1] ──
+#    非存在は無警告スキップ。
+inherit:
+  - backend/.env
+  - frontend/.env
+
+# ── ポート採番: これらが offset とともに同時に空く最小 offset を探索し [S2] ──
+#    WT_OFFSET を .dev/ に永続化。汎用側はポートの意味を持たない（§Q14）。
+#    inline flow list は [a, b] の 1 形式のみ許容（§5.1）。
+ports:
+  check: [3000, 8000]
+
+# ── env マップ: WT_OFFSET / WT_SLUG を参照するシェル式 [S2] ──
+#    展開結果を start・health.url・全フックへ同一値で注入する（§Q15）。
+env:
+  FRONTEND_PORT: "$((3000 + WT_OFFSET))"
+  BACKEND_PORT:  "$((8000 + WT_OFFSET))"
+  DATABASE_URL:  "postgres://localhost/app_${WT_SLUG}"
+
+# ── 起動コマンド（単一。マルチプロセスは start の中で process-compose 等を呼ぶ・§Q8）[S2] ──
+start: "pnpm dev"
+
+# ── 起動完了判定（url か command の一方・§Q12）[S2] ──
+health:
+  url: "http://localhost:${FRONTEND_PORT}/health"
+  timeout: 60
+  # command: "curl -sf http://localhost:$((3000 + WT_OFFSET))/"   # HTTP を持たない app 用
+
+# ── ライフサイクルフック（宣言したものだけ・worktree ルートで実行・§Q13）[S2] ──
+hooks:
+  post_create: "uv sync && pnpm install"     # 作成直後の依存初期化
+  pre_start:   "./scripts/seed-db.sh"        # DB 複製・マイグレーション（app 責務）
+  post_start:  "curl -s http://localhost:${FRONTEND_PORT}/warmup"
+  pre_rm:      "dropdb app_${WT_SLUG}"       # 破棄前クリーンアップ
+
+# ─────────────────────────────────────────────────────────────
+# 最小例1（start + health のみ・3 行）— ポート採番が不要な固定ポート app:
+#
+#   start: "npm run dev"
+#   health:
+#     url: "http://localhost:3000/"
+#
+# 最小例2（ポート自動採番つき・単純 app・10 行以内）:
+#
+#   ports:
+#     check: [3000]
+#   env:
+#     PORT: "$((3000 + WT_OFFSET))"
+#   start: "npm run dev"
+#   health:
+#     url: "http://localhost:${PORT}/"

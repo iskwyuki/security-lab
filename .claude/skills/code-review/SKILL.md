@@ -275,6 +275,22 @@ Critical: N件 / Warning: N件 / Info: N件 / 検証で棄却: N件
 2. 修正完了後、Lite レベルで再レビュー（無限ループ防止のため Lite 固定）
 3. Critical が 0 件になったらレビュー完了
 
+### Step 8: 効果ログの記録（Track B・best-effort）
+
+統合レポート（Step 6）の件数を用いて効果ログを 1 行追記する。**JSON は `log-effect.sh` が組む。手で JSON を書かない**（件数を引数で渡すだけ）。plugin ルートが解決できない環境ではスキップしてよい（決定的な主計測は pre-commit ゲートが担うため）:
+
+```sh
+LE="${CLAUDE_PLUGIN_ROOT:-}/hooks/log-effect.sh"
+if [ -f "$LE" ]; then
+  sh "$LE" --tool code-review --model "<現在の実行モデル ID>" \
+    --critical <Critical件数> --warning <Warning件数> --info <Info件数> \
+    --confirmed <検証 confirmed 件数> --refuted <検証で棄却した件数> \
+    --diff-lines <差分の追加+削除行数> --repo-path "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+```
+
+生ログは各リポジトリの `.claude/state/harness-telemetry/`（非コミット）に貯まる。スキーマは [`docs/effect-log/SCHEMA.md`](../../../docs/effect-log/SCHEMA.md) を参照。
+
 ## 注意事項
 
 - レビュー対象が20ファイル超の場合は、主要な変更に絞り、その旨を報告する
